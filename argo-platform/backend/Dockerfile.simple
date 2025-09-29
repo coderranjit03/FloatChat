@@ -1,0 +1,17 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Copy requirements first for better caching
+COPY requirements-basic.txt .
+RUN pip install --no-cache-dir -r requirements-basic.txt
+
+# Copy application code
+COPY app/simple_main.py ./main.py
+
+# Create data directory for SQLite
+RUN mkdir -p /app/data
+
+EXPOSE 8001
+
+CMD ["python", "main.py"]

@@ -1,0 +1,90 @@
+version: "3.8"
+
+services:
+  # PostgreSQL with PostGIS
+  postgres:
+    image: postgis/postgis:15-3.3
+    container_name: argo_postgres
+    environment:
+      POSTGRES_DB: argo_platform
+      POSTGRES_USER: argo_user
+      POSTGRES_PASSWORD: argo_password
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - argo_network
+
+  # Redis for caching
+  redis:
+    image: redis:7-alpine
+    container_name: argo_redis
+    ports:
+      - "6379:6379"
+    networks:
+      - argo_network
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+
+  # Chroma Vector Database
+  chroma:
+    image: ghcr.io/chroma-core/chroma:latest
+    container_name: argo_chroma
+    ports:
+      - "8000:8000"
+    environment:
+      - CHROMA_SERVER_HOST=0.0.0.0
+      - CHROMA_SERVER_HTTP_PORT=8000
+    volumes:
+      - chroma_data:/chroma/chroma
+    networks:
+      - argo_network
+
+  # FastAPI Backend
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    container_name: argo_backend
+    ports:
+      - "8001:8001"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://argo_user:argo_password@postgres:5432/argo_platform
+      - REDIS_URL=redis://redis:6379
+      - CHROMA_URL=http://chroma:8000
+    depends_on:
+      - postgres
+      - redis
+      - chroma
+    networks:
+      - argo_network
+    volumes:
+      - ./data:/app/data
+
+  # Streamlit Frontend
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+    container_name: argo_frontend
+    ports:
+      - "8501:8501"
+    environment:
+      - BACKEND_URL=http://backend:8001
+    depends_on:
+      - backend
+    networks:
+      - argo_network
+
+volumes:
+  postgres_data:
+  redis_data:
+  chroma_data:
+
+networks:
+  argo_network:
+    driver: bridge
